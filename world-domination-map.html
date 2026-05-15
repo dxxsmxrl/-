@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WORLD DOMINATION</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, addDoc,
+  updateDoc, deleteDoc, serverTimestamp, query, orderBy, limit }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ─── REPLACE WITH YOUR FIREBASE CONFIG ───────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBs2ghw1_7tdemNwkGAU8I99Untqz5eLiU",
+  authDomain: "marlwood-f0dd0.firebaseapp.com",
+  projectId: "marlwood-f0dd0",
+  storageBucket: "marlwood-f0dd0.firebasestorage.app",
+  messagingSenderId: "832709912787",
+  appId: "1:832709912787:web:afa64fd34441497d918c26"
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// Expose Firebase helpers to global scope
+window.__db = db;
+window.__fbSetCountry = async (code, data) => {
+  await setDoc(doc(db, 'world', code), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+};
+window.__fbDeleteCountry = async (code) => {
+  await deleteDoc(doc(db, 'world', code));
+};
+window.__fbListenWorld = (cb) => {
+  return onSnapshot(collection(db, 'world'), snap => {
+    const data = {};
+    snap.forEach(d => { data[d.id] = d.data(); });
+    cb(data);
+  });
+};
+window.__fbAddComment = async (code, text, author) => {
+  await addDoc(collection(db, 'world', code, 'comments'), {
+    text, author, ts: serverTimestamp()
+  });
+};
+window.__fbListenComments = (code, cb) => {
+  const q = query(collection(db, 'world', code, 'comments'), orderBy('ts', 'asc'), limit(50));
+  return onSnapshot(q, snap => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+};
+window.__fbDeleteComment = async (code, id) => {
+  await deleteDoc(doc(db, 'world', code, 'comments', id));
+};
+window.__fbReady = true;
+window.dispatchEvent(new Event('fbready'));
+</script>
+
+<style>
+/* ══════════════════════════════════════════════════════
+   DESIGN TOKENS — Two Themes
+══════════════════════════════════════════════════════ */
+:root {
+  /* VANDALS — Dark Command Center */
+  --bg:       #050505;
+  --bg2:      #0a0a0a;
+  --bg3:      #111111;
+  --border:   #1a1a1a;
+  --border2:  #252525;
+  --t1:       #e8e4dd;
+  --t2:       #666660;
+  --t3:       #2a2a28;
+  --acc:      #8b1a1a;    /* blood red */
+  --acc2:     #c8923a;    /* muted gold */
+  --cap:      #1a3d2b;    /* captured green */
+  --cap-border:#2d6644;
+  --tgt:      #1a1a3d;    /* target blue */
+  --tgt-border:#2d2d8b;
+  --des:      #2d1010;    /* destroyed */
+  --des-border:#5c1515;
+  --cru:      #3d2a00;    /* crusade orange */
+  --cru-border:#8b5e00;
+  --font-head: 'Outfit', sans-serif;
+  --font-body: 'DM Mono', monospace;
+  --font-serif:'Cormorant Garamond', serif;
+  --r:        4px;
+  --shadow:   0 8px 32px rgba(0,0,0,.9);
+  --shadow-sm:0 2px 12px rgba(0,0,0,.7);
+  --glow-red: 0 0 20px rgba(139,26,26,.4);
+  --glow-gold:0 0 20px rgba(200,146,58,.3);
+  /* Map colors */
+  --map-cap:   #2a5c3f;
+  --map-tgt:   #1e2f6b;
+  --map-des:   #3d1a1a;
+  --map-cru:   #6b4400;
+  --map-none:  #1a1a1a;
+  --map-water: #030306;
+  --map-border:#000;
+}
+
+body.monke {
+  /* FOR MONKE — Old Money Library */
+  --bg:       #f2ede4;
+  --bg2:      #ece6da;
+  --bg3:      #e4ddd0;
+  --border:   #d4cabb;
+  --border2:  #bfb5a3;
+  --t1:       #1a1612;
+  --t2:       #7a7060;
+  --t3:       #c8bfaf;
+  --acc:      #8b4a12;    /* dark cognac */
+  --acc2:     #4a3510;    /* dark brown */
+  --cap:      #d4e8d8;
+  --cap-border:#6b9b76;
+  --tgt:      #d8dff0;
+  --tgt-border:#4a5d9b;
+  --des:      #f0d8d8;
+  --des-border:#9b4a4a;
+  --cru:      #f0e8d0;
+  --cru-border:#9b7a20;
+  --font-head: 'Cormorant Garamond', serif;
+  --font-body: 'Cormorant Garamond', serif;
+  --shadow:   0 8px 32px rgba(60,40,20,.18);
+  --shadow-sm:0 2px 12px rgba(60,40,20,.12);
+  --glow-red: 0 0 20px rgba(139,74,18,.2);
+  --glow-gold:0 0 20px rgba(74,53,16,.15);
+  --map-cap:   #4a8c5c;
+  --map-tgt:   #4a5fa8;
+  --map-des:   #a84a4a;
+  --map-cru:   #c8962a;
+  --map-none:  #c8b99a;
+  --map-water: #8bafc0;
+  --map-border:#8a7a60;
+}
+
+/* ══════════════════════════════════════════════════════
+   RESET & BASE
+══════════════════════════════════════════════════════ */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; overflow:hidden; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 13px;
+  transition: background .4s, color .4s;
+}
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+::-webkit-scrollbar-track { background:transparent; }
+::selection { background:var(--acc); color:#fff; }
+
+/* ══════════════════════════════════════════════════════
+   AUTH SCREEN
+══════════════════════════════════════════════════════ */
+#auth {
+  position:fixed; inset:0; z-index:9999;
+  background:var(--bg);
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:0;
+}
+#auth::before {
+  content:'';
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 60% 80% at 20% 50%, rgba(139,26,26,.06) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 60% at 80% 30%, rgba(200,146,58,.04) 0%, transparent 50%);
+  pointer-events:none;
+}
+body.monke #auth::before {
+  background:
+    radial-gradient(ellipse 60% 80% at 20% 50%, rgba(139,74,18,.06) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 60% at 80% 30%, rgba(74,53,16,.04) 0%, transparent 50%);
+}
+
+.auth-inner {
+  position:relative; z-index:1;
+  width:100%; max-width:340px; padding:0 24px;
+  animation: authIn .7s cubic-bezier(.16,1,.3,1);
+}
+@keyframes authIn { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+
+.auth-wordmark {
+  font-family:var(--font-serif);
+  font-size:52px; font-weight:300; letter-spacing:-1px;
+  line-height:1; color:var(--t1);
+  margin-bottom:6px;
+}
+body:not(.monke) .auth-wordmark {
+  font-family:'Outfit',sans-serif;
+  font-weight:700; font-size:38px; letter-spacing:4px;
+  text-transform:uppercase;
+}
+.auth-sub {
+  font-size:10px; color:var(--t2);
+  letter-spacing:2px; text-transform:uppercase;
+  margin-bottom:44px;
+  font-family:'DM Mono',monospace;
+}
+
+.auth-choose { margin-bottom:28px; }
+.auth-choose-label {
+  font-size:9px; color:var(--t3);
+  letter-spacing:2px; text-transform:uppercase;
+  margin-bottom:10px;
+  font-family:'DM Mono',monospace;
+}
+.user-btns { display:flex; gap:8px; }
+.user-btn {
+  flex:1; padding:14px 10px;
+  background:var(--bg3); border:1px solid var(--border2);
+  border-radius:var(--r); color:var(--t1);
+  font-family:var(--font-head); font-size:15px; font-weight:500;
+  cursor:pointer; transition:all .2s; text-align:center;
+}
+.user-btn:hover { border-color:var(--acc2); color:var(--t1); background:var(--bg2); box-shadow:var(--glow-gold); }
+.user-btn.selected { border-color:var(--acc); background:var(--bg3); box-shadow:var(--glow-red); }
+
+.auth-sep { height:1px; background:var(--border); margin:20px 0; }
+
+.theme-row { display:flex; gap:8px; margin-bottom:32px; }
+.theme-btn {
+  flex:1; padding:10px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:var(--r); color:var(--t2);
+  font-family:'DM Mono',monospace; font-size:10px; letter-spacing:1px;
+  cursor:pointer; transition:all .2s; text-align:center;
+  text-transform:uppercase;
+}
+.theme-btn:hover { color:var(--t1); border-color:var(--border2); }
+.theme-btn.active { border-color:var(--acc2); color:var(--acc2); }
+
+.enter-btn {
+  width:100%; padding:16px;
+  background:var(--acc); border:none;
+  border-radius:var(--r); color:#fff;
+  font-family:'DM Mono',monospace; font-size:11px;
+  font-weight:500; letter-spacing:2px; text-transform:uppercase;
+  cursor:pointer; transition:all .2s;
+  box-shadow: var(--glow-red);
+}
+.enter-btn:hover { opacity:.88; transform:translateY(-1px); }
+.enter-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+
+/* ══════════════════════════════════════════════════════
+   MAIN LAYOUT
+══════════════════════════════════════════════════════ */
+#app { display:none; position:fixed; inset:0; flex-direction:column; }
+#app.on { display:flex; }
+
+/* ── TOPBAR ── */
+.topbar {
+  height:48px; background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:12px;
+  flex-shrink:0; z-index:400;
+  box-shadow:0 1px 0 var(--border), 0 4px 20px rgba(0,0,0,.4);
+}
+.tb-logo {
+  font-family:var(--font-serif); font-size:20px; font-weight:300;
+  letter-spacing:-0.5px; color:var(--t1); flex-shrink:0;
+}
+body:not(.monke) .tb-logo {
+  font-family:'Outfit',sans-serif; font-weight:700;
+  font-size:13px; letter-spacing:3px; text-transform:uppercase;
+}
+.tb-sep { width:1px; height:20px; background:var(--border2); flex-shrink:0; }
+.tb-sp { flex:1; }
+.tb-user {
+  display:flex; align-items:center; gap:7px;
+  font-size:11px; color:var(--t2);
+  font-family:'DM Mono',monospace;
+}
+.tb-user-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--acc2); flex-shrink:0;
+  box-shadow:0 0 8px var(--acc2);
+  animation: dotpulse 2s ease infinite;
+}
+@keyframes dotpulse { 0%,100%{opacity:1}50%{opacity:.5} }
+
+.tb-btn {
+  width:32px; height:32px;
+  border:1px solid var(--border2); border-radius:var(--r);
+  background:none; color:var(--t2);
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .2s; flex-shrink:0;
+}
+.tb-btn:hover { background:var(--bg3); color:var(--t1); border-color:var(--border2); }
+.tb-btn svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.5; stroke-linecap:round; }
+
+/* Progress bar */
+.tb-progress {
+  display:flex; align-items:center; gap:8px;
+  font-size:10px; color:var(--t2);
+  font-family:'DM Mono',monospace;
+}
+.progress-bar {
+  width:80px; height:3px;
+  background:var(--bg3); border-radius:2px; overflow:hidden;
+}
+.progress-fill {
+  height:100%; background:var(--acc2);
+  border-radius:2px;
+  transition:width .6s ease;
+  box-shadow:0 0 6px var(--acc2);
+}
+
+/* ── BODY: Map + Sidebar ── */
+.body { flex:1; display:flex; overflow:hidden; position:relative; }
+
+/* ── MAP ── */
+#map {
+  flex:1; z-index:1;
+  background:var(--map-water);
+  transition:filter .3s;
+}
+#map:focus { outline:none; }
+
+/* Leaflet overrides */
+.leaflet-container { background:var(--map-water) !important; }
+.leaflet-control-zoom {
+  border:1px solid var(--border2) !important;
+  border-radius:var(--r) !important;
+  box-shadow:var(--shadow-sm) !important;
+  overflow:hidden;
+}
+.leaflet-control-zoom a {
+  background:var(--bg2) !important; color:var(--t1) !important;
+  border-bottom:1px solid var(--border) !important;
+  font-family:'DM Mono',monospace !important;
+  font-size:16px !important; line-height:26px !important;
+  width:26px !important; height:26px !important;
+}
+.leaflet-control-zoom a:hover { background:var(--bg3) !important; }
+.leaflet-attribution-flag { display:none !important; }
+.leaflet-control-attribution {
+  background:rgba(5,5,5,.7) !important;
+  color:var(--t3) !important; font-size:9px !important;
+  border-radius:var(--r) !important;
+}
+body.monke .leaflet-control-attribution { background:rgba(242,237,228,.8) !important; }
+
+/* ── COUNTRY TOOLTIP ── */
+.country-tooltip {
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:var(--r); padding:6px 10px;
+  font-family:'DM Mono',monospace; font-size:11px;
+  color:var(--t1); white-space:nowrap;
+  box-shadow:var(--shadow-sm); pointer-events:none;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width:340px; background:var(--bg2);
+  border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  overflow:hidden; flex-shrink:0;
+  transition:transform .35s cubic-bezier(.16,1,.3,1);
+  z-index:10; position:relative;
+}
+.sidebar.collapsed { transform:translateX(100%); position:absolute; right:0; top:0; bottom:0; }
+@media (max-width:768px) {
+  .sidebar {
+    position:fixed; right:0; top:48px; bottom:0;
+    width:100%; max-width:380px;
+    transform:translateX(100%);
+    z-index:300;
+  }
+  .sidebar.open { transform:translateX(0); }
+}
+
+.sidebar-hdr {
+  padding:16px 20px 14px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0; background:var(--bg2);
+}
+.sidebar-country-name {
+  font-family:var(--font-serif); font-size:26px; font-weight:300;
+  line-height:1.1; margin-bottom:4px;
+}
+body:not(.monke) .sidebar-country-name {
+  font-family:'Outfit',sans-serif; font-weight:600; font-size:20px;
+}
+.sidebar-country-code { font-size:10px; color:var(--t3); letter-spacing:2px; font-family:'DM Mono',monospace; }
+
+/* Status pills */
+.status-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+.status-pill {
+  padding:5px 12px; border-radius:20px;
+  font-family:'DM Mono',monospace; font-size:10px;
+  letter-spacing:1px; text-transform:uppercase;
+  cursor:pointer; border:1px solid transparent;
+  transition:all .2s; background:var(--bg3); color:var(--t2);
+}
+.status-pill:hover { color:var(--t1); }
+.status-pill.cap  { background:var(--cap); border-color:var(--cap-border); color:var(--map-cap); }
+.status-pill.tgt  { background:var(--tgt); border-color:var(--tgt-border); color:var(--map-tgt); }
+.status-pill.des  { background:var(--des); border-color:var(--des-border); color:var(--map-des); }
+.status-pill.cru  { background:var(--cru); border-color:var(--cru-border); color:var(--map-cru); }
+body.monke .status-pill.cap { color:#2a5c3f; }
+body.monke .status-pill.tgt { color:#2a3d7a; }
+body.monke .status-pill.des { color:#7a2a2a; }
+body.monke .status-pill.cru { color:#7a5c00; }
+.status-pill.active { box-shadow:0 0 10px rgba(200,146,58,.3); }
+
+.remove-btn {
+  padding:5px 10px; border-radius:20px;
+  font-family:'DM Mono',monospace; font-size:10px;
+  letter-spacing:1px; text-transform:uppercase;
+  cursor:pointer; border:1px solid var(--des-border);
+  background:var(--des); color:var(--map-des);
+  transition:all .2s; margin-left:auto;
+}
+body.monke .remove-btn { color:#7a2a2a; }
+.remove-btn:hover { opacity:.8; }
+
+/* Sidebar body */
+.sidebar-body { flex:1; overflow-y:auto; }
+
+/* Notes */
+.sidebar-section {
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+}
+.sec-label {
+  font-size:9px; color:var(--t3); letter-spacing:2px;
+  text-transform:uppercase; font-family:'DM Mono',monospace;
+  margin-bottom:10px;
+}
+.notes-area {
+  width:100%; min-height:70px; max-height:120px;
+  background:var(--bg3); border:1px solid var(--border2);
+  border-radius:var(--r); padding:10px 12px;
+  color:var(--t1); font-family:var(--font-body); font-size:12px;
+  resize:none; outline:none; line-height:1.5;
+  transition:border-color .2s;
+}
+.notes-area:focus { border-color:var(--border2); }
+.save-notes-btn {
+  margin-top:7px; padding:6px 14px;
+  background:var(--bg3); border:1px solid var(--border2);
+  border-radius:var(--r); color:var(--t2);
+  font-family:'DM Mono',monospace; font-size:10px; letter-spacing:1px;
+  cursor:pointer; transition:all .18s; text-transform:uppercase;
+  float:right;
+}
+.save-notes-btn:hover { color:var(--t1); border-color:var(--acc2); }
+
+/* Photos */
+.photos-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:8px; }
+.photo-thumb {
+  aspect-ratio:1; border-radius:var(--r); overflow:hidden;
+  background:var(--bg3); border:1px solid var(--border);
+  cursor:pointer; position:relative;
+  transition:transform .15s, box-shadow .15s;
+}
+.photo-thumb:hover { transform:scale(1.03); box-shadow:var(--shadow-sm); }
+.photo-thumb img { width:100%; height:100%; object-fit:cover; }
+.photo-thumb .del-photo {
+  position:absolute; top:3px; right:3px;
+  width:18px; height:18px; border-radius:50%;
+  background:rgba(0,0,0,.8); border:none; color:#fff;
+  font-size:10px; cursor:pointer; display:none;
+  align-items:center; justify-content:center;
+}
+.photo-thumb:hover .del-photo { display:flex; }
+.upload-photo-btn {
+  width:100%; padding:8px;
+  background:var(--bg3); border:1px dashed var(--border2);
+  border-radius:var(--r); color:var(--t2);
+  font-family:'DM Mono',monospace; font-size:10px;
+  cursor:pointer; transition:all .2s; text-align:center;
+  letter-spacing:1px; text-transform:uppercase;
+}
+.upload-photo-btn:hover { border-color:var(--acc2); color:var(--acc2); }
+
+/* Comments */
+.comments-list { display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto; }
+.comment {
+  display:flex; gap:8px; align-items:flex-start;
+  padding:8px 10px; background:var(--bg3);
+  border-radius:var(--r); border:1px solid var(--border);
+}
+.comment-author {
+  font-size:9px; color:var(--acc2);
+  letter-spacing:1px; font-family:'DM Mono',monospace;
+  text-transform:uppercase; flex-shrink:0; padding-top:1px;
+}
+.comment-text { font-size:12px; color:var(--t1); line-height:1.45; flex:1; }
+.comment-del {
+  background:none; border:none; color:var(--t3);
+  cursor:pointer; font-size:12px; flex-shrink:0; padding:0;
+  line-height:1;
+}
+.comment-del:hover { color:var(--map-des); }
+
+.comment-input-row {
+  display:flex; gap:6px; margin-top:10px;
+}
+.comment-input {
+  flex:1; padding:8px 11px;
+  background:var(--bg3); border:1px solid var(--border2);
+  border-radius:var(--r); color:var(--t1);
+  font-family:var(--font-body); font-size:12px;
+  outline:none; transition:border-color .2s;
+}
+.comment-input:focus { border-color:var(--acc2); }
+.comment-send {
+  padding:8px 14px;
+  background:var(--acc); border:none;
+  border-radius:var(--r); color:#fff;
+  font-family:'DM Mono',monospace; font-size:10px;
+  cursor:pointer; transition:opacity .2s; white-space:nowrap;
+  letter-spacing:1px; text-transform:uppercase;
+}
+.comment-send:hover { opacity:.85; }
+
+/* ── LEGEND / CONTROLS ── */
+.map-controls {
+  position:absolute; bottom:20px; left:16px; z-index:200;
+  display:flex; flex-direction:column; gap:6px;
+}
+.legend {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:var(--r); padding:12px 14px;
+  box-shadow:var(--shadow-sm);
+}
+.legend-title {
+  font-size:8px; color:var(--t3);
+  letter-spacing:2px; text-transform:uppercase;
+  font-family:'DM Mono',monospace;
+  margin-bottom:8px;
+}
+.legend-item { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+.legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+.legend-label { font-size:10px; color:var(--t2); font-family:'DM Mono',monospace; }
+
+/* ── TOAST ── */
+.toast {
+  position:fixed; bottom:24px; right:24px; z-index:9999;
+  background:var(--bg3); border:1px solid var(--border2);
+  border-radius:var(--r); padding:10px 18px;
+  font-size:11px; color:var(--t1);
+  font-family:'DM Mono',monospace; letter-spacing:.5px;
+  box-shadow:var(--shadow);
+  animation:toastIn .25s cubic-bezier(.16,1,.3,1);
+}
+@keyframes toastIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+/* ── PHOTO LIGHTBOX ── */
+.lightbox {
+  position:fixed; inset:0; z-index:9000;
+  background:rgba(0,0,0,.95);
+  display:none; align-items:center; justify-content:center;
+  backdrop-filter:blur(10px);
+}
+.lightbox.on { display:flex; }
+.lightbox img { max-width:90vw; max-height:90vh; object-fit:contain; border-radius:var(--r); }
+.lightbox-close {
+  position:absolute; top:20px; right:24px;
+  background:none; border:none; color:#fff;
+  font-size:28px; cursor:pointer; opacity:.6;
+  transition:opacity .15s;
+}
+.lightbox-close:hover { opacity:1; }
+
+/* ── MOBILE SIDEBAR TOGGLE ── */
+.sidebar-toggle {
+  position:fixed; bottom:24px; right:24px; z-index:300;
+  width:48px; height:48px; border-radius:50%;
+  background:var(--acc); border:none; color:#fff;
+  box-shadow:var(--glow-red), var(--shadow);
+  cursor:pointer; display:none;
+  align-items:center; justify-content:center;
+  font-size:20px; transition:transform .2s;
+}
+.sidebar-toggle:hover { transform:scale(1.07); }
+@media (max-width:768px) { .sidebar-toggle { display:flex; } }
+
+/* ── MAP ANIMATIONS ── */
+/* Captured countries pulse */
+@keyframes capturedPulse {
+  0%,100% { opacity:1; }
+  50% { opacity:.85; }
+}
+/* Target countries glow pulse */
+@keyframes targetGlow {
+  0%,100% { opacity:.9; }
+  50% { opacity:.6; }
+}
+/* Crusade flicker */
+@keyframes crusadeFlicker {
+  0%,100% { opacity:1; }
+  40% { opacity:.7; }
+  60% { opacity:.95; }
+}
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align:center; padding:24px 0;
+  font-size:11px; color:var(--t3);
+  font-family:'DM Mono',monospace; letter-spacing:.5px;
+}
+
+/* ── CLOSE SIDEBAR BTN ── */
+.sidebar-close-btn {
+  width:28px; height:28px;
+  border:1px solid var(--border2); border-radius:var(--r);
+  background:none; color:var(--t2);
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .18s; flex-shrink:0;
+  position:absolute; top:12px; right:16px;
+}
+.sidebar-close-btn:hover { background:var(--bg3); color:var(--t1); }
+.sidebar-close-btn svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; }
+
+/* Body class when sidebar open on mobile */
+@media (max-width:768px) {
+  body.sb-open #map { filter:brightness(.6); }
+}
+
+/* Stat badges on topbar */
+.stat-badge {
+  display:flex; align-items:center; gap:5px;
+  padding:4px 9px; border:1px solid var(--border);
+  border-radius:20px; font-family:'DM Mono',monospace;
+  font-size:10px; color:var(--t2); white-space:nowrap;
+}
+.stat-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+
+/* Section clear */
+.clearfix::after { content:''; display:table; clear:both; }
+</style>
+</head>
+
+<body>
+<!-- ══════════════════════════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════════════════════════ -->
+<div id="auth">
+  <div class="auth-inner">
+    <div class="auth-logo">
+      <div class="auth-wordmark">World<br>Domination</div>
+      <div class="auth-sub">tactical operations map</div>
+    </div>
+
+    <div class="auth-choose">
+      <div class="auth-choose-label">identify yourself</div>
+      <div class="user-btns">
+        <button class="user-btn" id="ubtn-a" onclick="selectUser('A')">marl</button>
+        <button class="user-btn" id="ubtn-b" onclick="selectUser('B')">dxxsmxrl</button>
+      </div>
+    </div>
+
+    <div class="auth-sep"></div>
+
+    <div style="margin-bottom:20px">
+      <div class="auth-choose-label">aesthetic doctrine</div>
+      <div class="theme-row">
+        <button class="theme-btn active" id="tbtn-dark" onclick="selectTheme('dark')">▪ Vandals</button>
+        <button class="theme-btn" id="tbtn-monke" onclick="selectTheme('monke')">◦ For Monke</button>
+      </div>
+    </div>
+
+    <button class="enter-btn" id="enter-btn" onclick="enterApp()" disabled>
+      enter theater of operations
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════════════ -->
+<div id="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="tb-logo" id="tb-logo">WD</div>
+    <div class="tb-sep"></div>
+
+    <div class="tb-progress">
+      <span id="pct-label">0%</span>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <span id="cap-count" style="color:var(--t3)">conquered</span>
+    </div>
+
+    <div class="tb-sp"></div>
+
+    <div class="stat-badge" style="border-color:var(--cap-border)">
+      <div class="stat-dot" style="background:var(--map-cap)"></div>
+      <span id="cnt-cap">0</span>
+    </div>
+    <div class="stat-badge" style="border-color:var(--tgt-border)">
+      <div class="stat-dot" style="background:var(--map-tgt)"></div>
+      <span id="cnt-tgt">0</span>
+    </div>
+    <div class="stat-badge" style="border-color:var(--cru-border)">
+      <div class="stat-dot" style="background:var(--map-cru)"></div>
+      <span id="cnt-cru">0</span>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <div class="tb-user">
+      <div class="tb-user-dot"></div>
+      <span id="tb-username">—</span>
+    </div>
+
+    <!-- Theme toggle -->
+    <button class="tb-btn" onclick="toggleThemeApp()" title="switch theme" style="font-size:13px">⌀</button>
+    <button class="tb-btn" onclick="toggleSidebar()" title="panel" id="tb-panel-btn">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+    </button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+    <!-- MAP -->
+    <div id="map"></div>
+
+    <!-- MAP CONTROLS -->
+    <div class="map-controls">
+      <div class="legend">
+        <div class="legend-title">status</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--map-cap)"></div><div class="legend-label">captured</div></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--map-tgt);animation:targetGlow 2s infinite"></div><div class="legend-label">target</div></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--map-des)"></div><div class="legend-label">destroyed</div></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--map-cru);animation:crusadeFlicker 1.5s infinite"></div><div class="legend-label">crusade</div></div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar collapsed" id="sidebar">
+      <button class="sidebar-close-btn" onclick="closeSidebar()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+
+      <div class="sidebar-hdr">
+        <div class="sidebar-country-name" id="sb-name">Select a country</div>
+        <div class="sidebar-country-code" id="sb-code">—</div>
+        <div class="status-row" id="sb-status-row" style="display:none">
+          <button class="status-pill cap"  onclick="setStatus('captured')">Captured</button>
+          <button class="status-pill tgt"  onclick="setStatus('target')">Target</button>
+          <button class="status-pill des"  onclick="setStatus('destroyed')">Destroyed</button>
+          <button class="status-pill cru"  onclick="setStatus('crusade')">Crusade</button>
+          <button class="remove-btn"       onclick="clearStatus()">✕ clear</button>
+        </div>
+      </div>
+
+      <div class="sidebar-body" id="sb-body">
+        <div style="padding:40px 20px;text-align:center;color:var(--t3);font-family:'DM Mono',monospace;font-size:11px">
+          click any country on the map
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile sidebar toggle -->
+<button class="sidebar-toggle" id="sb-toggle-btn" onclick="toggleSidebar()" style="display:none">⊞</button>
+
+<!-- Photo Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- Hidden file input for photo upload -->
+<input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+
+<!-- SVG Icons sprite -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <symbol id="ic-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+</defs>
+</svg>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════ */
+let currentUser = null; // 'A' | 'B'
+let currentTheme = 'dark'; // 'dark' | 'monke'
+let selectedCountry = null; // { code, name }
+let worldData = {}; // { [code]: { status, notes, photos, ... } }
+let commentUnsub = null;
+let worldUnsub   = null;
+let map = null;
+let geojsonLayer = null;
+const TOTAL_COUNTRIES = 195;
+
+/* ══════════════════════════════════════════════════════
+   AUTH
+══════════════════════════════════════════════════════ */
+function selectUser(u) {
+  currentUser = u;
+  document.getElementById('ubtn-a').classList.toggle('selected', u === 'A');
+  document.getElementById('ubtn-b').classList.toggle('selected', u === 'B');
+  checkEnter();
+}
+function selectTheme(t) {
+  currentTheme = t;
+  document.getElementById('tbtn-dark').classList.toggle('active', t === 'dark');
+  document.getElementById('tbtn-monke').classList.toggle('active', t === 'monke');
+  document.body.classList.toggle('monke', t === 'monke');
+}
+function checkEnter() {
+  document.getElementById('enter-btn').disabled = !currentUser;
+}
+function enterApp() {
+  if (!currentUser) return;
+  document.getElementById('auth').style.display = 'none';
+  document.getElementById('app').classList.add('on');
+  const name = currentUser === 'A' ? 'marl' : 'dxxsmxrl';
+  document.getElementById('tb-username').textContent = name;
+  document.body.classList.toggle('monke', currentTheme === 'monke');
+  initMap();
+  initFirebase();
+
+  // Mobile: show toggle button
+  if (window.innerWidth <= 768) {
+    document.getElementById('sb-toggle-btn').style.display = 'flex';
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   THEME TOGGLE (in-app)
+══════════════════════════════════════════════════════ */
+function toggleThemeApp() {
+  currentTheme = currentTheme === 'dark' ? 'monke' : 'dark';
+  document.body.classList.toggle('monke', currentTheme === 'monke');
+  // Re-render map colors
+  if (geojsonLayer) geojsonLayer.setStyle(countryStyle);
+  toast(currentTheme === 'monke' ? '◦ For Monke activated' : '▪ Vandals activated');
+}
+
+/* ══════════════════════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════════════════════ */
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  if (window.innerWidth <= 768) {
+    sb.classList.toggle('open');
+    document.body.classList.toggle('sb-open', sb.classList.contains('open'));
+  } else {
+    sb.classList.toggle('collapsed');
+  }
+}
+function closeSidebar() {
+  const sb = document.getElementById('sidebar');
+  if (window.innerWidth <= 768) {
+    sb.classList.remove('open');
+    document.body.classList.remove('sb-open');
+  } else {
+    sb.classList.add('collapsed');
+  }
+}
+function openSidebar() {
+  const sb = document.getElementById('sidebar');
+  if (window.innerWidth <= 768) {
+    sb.classList.add('open');
+    document.body.classList.add('sb-open');
+  } else {
+    sb.classList.remove('collapsed');
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   FIREBASE
+══════════════════════════════════════════════════════ */
+function initFirebase() {
+  if (!window.__fbReady) {
+    window.addEventListener('fbready', initFirebase, { once: true });
+    return;
+  }
+  if (worldUnsub) worldUnsub();
+  worldUnsub = window.__fbListenWorld(data => {
+    worldData = data || {};
+    if (geojsonLayer) geojsonLayer.setStyle(countryStyle);
+    updateStats();
+    // Refresh sidebar if open
+    if (selectedCountry) renderSidebar(selectedCountry.code, selectedCountry.name);
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   MAP INIT
+══════════════════════════════════════════════════════ */
+function initMap() {
+  map = L.map('map', {
+    center: [20, 10],
+    zoom: 2,
+    minZoom: 1,
+    maxZoom: 8,
+    zoomControl: true,
+    attributionControl: true,
+    scrollWheelZoom: true,
+    worldCopyJump: false,
+  });
+
+  // Custom dark tile layer — CartoDB dark matter
+  const tileUrl = document.body.classList.contains('monke')
+    ? 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+
+  L.tileLayer(tileUrl, {
+    attribution: '©OpenStreetMap ©CartoDB',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    opacity: 0
+  }).addTo(map);
+
+  // Load GeoJSON from natural earth
+  loadGeoJSON();
+}
+
+/* ══════════════════════════════════════════════════════
+   GEOJSON — World countries
+══════════════════════════════════════════════════════ */
+async function loadGeoJSON() {
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson');
+    const data = await res.json();
+    renderGeoJSON(data);
+  } catch(e) {
+    console.error('GeoJSON load failed, trying fallback', e);
+    // Fallback: try alternative source
+    try {
+      const res2 = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+      // This returns topojson, need to handle differently
+      toast('map data loaded (simplified)');
+    } catch(e2) {
+      toast('could not load map data');
+    }
+  }
+}
+
+function countryStyle(feature) {
+  const code = feature.properties.ISO_A2 || feature.properties.iso_a2 || feature.properties.ISO_A3;
+  const data = worldData[code];
+  const status = data ? data.status : null;
+  const isDark = !document.body.classList.contains('monke');
+
+  let fillColor, fillOpacity, weight, color, dashArray;
+  fillOpacity = 0.82;
+  weight = isDark ? 0.5 : 0.8;
+  color = isDark ? '#000' : getComputedStyle(document.body).getPropertyValue('--map-border').trim() || '#8a7a60';
+  dashArray = null;
+
+  switch(status) {
+    case 'captured':
+      fillColor = getComputedStyle(document.body).getPropertyValue('--map-cap').trim();
+      break;
+    case 'target':
+      fillColor = getComputedStyle(document.body).getPropertyValue('--map-tgt').trim();
+      fillOpacity = 0.7;
+      dashArray = '4,4';
+      color = isDark ? '#3a3aaa' : '#4a5fa8';
+      weight = 1.5;
+      break;
+    case 'destroyed':
+      fillColor = getComputedStyle(document.body).getPropertyValue('--map-des').trim();
+      fillOpacity = 0.75;
+      dashArray = '2,3';
+      break;
+    case 'crusade':
+      fillColor = getComputedStyle(document.body).getPropertyValue('--map-cru').trim();
+      dashArray = '6,3';
+      color = isDark ? '#c8962a' : '#8b6010';
+      weight = 1.5;
+      break;
+    default:
+      fillColor = getComputedStyle(document.body).getPropertyValue('--map-none').trim();
+      fillOpacity = isDark ? 0.85 : 0.6;
+  }
+
+  return { fillColor, fillOpacity, weight, color, dashArray };
+}
+
+function onEachFeature(feature, layer) {
+  const name = feature.properties.ADMIN || feature.properties.name || feature.properties.NAME || 'Unknown';
+  const code = feature.properties.ISO_A2 || feature.properties.iso_a2 || feature.properties.ISO_A3 || name.slice(0,3).toUpperCase();
+
+  layer.on({
+    mouseover: (e) => {
+      const l = e.target;
+      const data = worldData[code];
+      const status = data ? data.status : null;
+      if (!status) {
+        l.setStyle({ fillOpacity: 0.95, weight: 1.2, color: '#888' });
+      } else {
+        l.setStyle({ weight: 1.5, fillOpacity: 1 });
+      }
+      l.bringToFront();
+      l.bindTooltip(`<div class="country-tooltip">${name}</div>`, { sticky: true, className: 'no-bg-tooltip' }).openTooltip();
+    },
+    mouseout: (e) => {
+      geojsonLayer.resetStyle(e.target);
+      e.target.closeTooltip();
+    },
+    click: () => {
+      selectedCountry = { code, name };
+      renderSidebar(code, name);
+      openSidebar();
+    }
+  });
+}
+
+function renderGeoJSON(data) {
+  if (geojsonLayer) { geojsonLayer.remove(); }
+  geojsonLayer = L.geoJSON(data, {
+    style: countryStyle,
+    onEachFeature: onEachFeature,
+  }).addTo(map);
+  updateStats();
+}
+
+/* ══════════════════════════════════════════════════════
+   STATS
+══════════════════════════════════════════════════════ */
+function updateStats() {
+  let cap = 0, tgt = 0, des = 0, cru = 0;
+  for (const code in worldData) {
+    const s = worldData[code]?.status;
+    if (s === 'captured')  cap++;
+    else if (s === 'target')    tgt++;
+    else if (s === 'destroyed') des++;
+    else if (s === 'crusade')   cru++;
+  }
+  const pct = Math.round((cap / TOTAL_COUNTRIES) * 100);
+  document.getElementById('pct-label').textContent = pct + '%';
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('cap-count').textContent = cap + '/' + TOTAL_COUNTRIES;
+  document.getElementById('cnt-cap').textContent = cap;
+  document.getElementById('cnt-tgt').textContent = tgt;
+  document.getElementById('cnt-cru').textContent = cru;
+}
+
+/* ══════════════════════════════════════════════════════
+   SIDEBAR RENDER
+══════════════════════════════════════════════════════ */
+function renderSidebar(code, name) {
+  document.getElementById('sb-name').textContent = name;
+  document.getElementById('sb-code').textContent = code;
+  document.getElementById('sb-status-row').style.display = 'flex';
+
+  const data = worldData[code] || {};
+  const body = document.getElementById('sb-body');
+
+  // Build sidebar content
+  body.innerHTML = `
+    <!-- NOTES -->
+    <div class="sidebar-section">
+      <div class="sec-label">intel / notes</div>
+      <textarea class="notes-area" id="notes-area" placeholder="Add intelligence notes...">${esc(data.notes || '')}</textarea>
+      <div class="clearfix">
+        <button class="save-notes-btn" onclick="saveNotes()">save intel</button>
+      </div>
+    </div>
+
+    <!-- PHOTOS -->
+    <div class="sidebar-section">
+      <div class="sec-label">field photos</div>
+      <div class="photos-grid" id="photos-grid"></div>
+      <button class="upload-photo-btn" onclick="triggerPhotoUpload()">+ upload photo</button>
+    </div>
+
+    <!-- COMMENTS -->
+    <div class="sidebar-section">
+      <div class="sec-label">dispatch / comms</div>
+      <div class="comments-list" id="comments-list">
+        <div class="empty-state">no dispatches yet</div>
+      </div>
+      <div class="comment-input-row">
+        <input class="comment-input" id="comment-input" placeholder="send dispatch..." onkeydown="if(event.key==='Enter')sendComment()">
+        <button class="comment-send" onclick="sendComment()">send</button>
+      </div>
+    </div>
+  `;
+
+  // Render photos from stored base64
+  renderPhotos(data.photos || []);
+
+  // Listen to comments in real-time
+  if (commentUnsub) { commentUnsub(); commentUnsub = null; }
+  if (window.__fbReady) {
+    commentUnsub = window.__fbListenComments(code, renderComments);
+  }
+}
+
+function renderPhotos(photos) {
+  const grid = document.getElementById('photos-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  (photos || []).forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `
+      <img src="${p}" alt="photo ${i+1}" onclick="openLightbox('${p}')">
+      <button class="del-photo" onclick="deletePhoto(${i},event)">✕</button>
+    `;
+    grid.appendChild(div);
+  });
+}
+
+function renderComments(comments) {
+  const list = document.getElementById('comments-list');
+  if (!list) return;
+  if (!comments.length) {
+    list.innerHTML = '<div class="empty-state">no dispatches yet</div>';
+    return;
+  }
+  list.innerHTML = '';
+  const authorName = currentUser === 'A' ? 'marl' : 'dxxsmxrl';
+  comments.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'comment';
+    div.innerHTML = `
+      <div style="flex:1">
+        <div class="comment-author">${esc(c.author || '?')}</div>
+        <div class="comment-text">${esc(c.text)}</div>
+      </div>
+      ${c.author === authorName ? `<button class="comment-del" onclick="deleteComment('${c.id}')">✕</button>` : ''}
+    `;
+    list.appendChild(div);
+  });
+  list.scrollTop = list.scrollHeight;
+}
+
+/* ══════════════════════════════════════════════════════
+   ACTIONS
+══════════════════════════════════════════════════════ */
+function setStatus(status) {
+  if (!selectedCountry || !window.__fbReady) { toast('select a country first'); return; }
+  const code = selectedCountry.code;
+  const existing = worldData[code] || {};
+  window.__fbSetCountry(code, { ...existing, status, setBy: currentUser })
+    .catch(() => toast('sync error'));
+  toast(`${selectedCountry.name} → ${status}`);
+}
+
+function clearStatus() {
+  if (!selectedCountry || !window.__fbReady) return;
+  window.__fbDeleteCountry(selectedCountry.code).catch(() => {});
+  toast(`${selectedCountry.name} cleared`);
+}
+
+function saveNotes() {
+  if (!selectedCountry || !window.__fbReady) return;
+  const notes = document.getElementById('notes-area')?.value || '';
+  const existing = worldData[selectedCountry.code] || {};
+  window.__fbSetCountry(selectedCountry.code, { ...existing, notes })
+    .catch(() => toast('sync error'));
+  toast('intel saved');
+}
+
+function sendComment() {
+  if (!selectedCountry || !window.__fbReady) return;
+  const inp = document.getElementById('comment-input');
+  const text = inp?.value.trim();
+  if (!text) return;
+  const authorName = currentUser === 'A' ? 'marl' : 'dxxsmxrl';
+  inp.value = '';
+  window.__fbAddComment(selectedCountry.code, text, authorName)
+    .catch(() => toast('dispatch failed'));
+}
+
+function deleteComment(id) {
+  if (!selectedCountry || !window.__fbReady || !id) return;
+  window.__fbDeleteComment(selectedCountry.code, id).catch(() => {});
+}
+
+/* ══════════════════════════════════════════════════════
+   PHOTOS (base64 stored in Firestore)
+══════════════════════════════════════════════════════ */
+function triggerPhotoUpload() {
+  document.getElementById('photo-input').click();
+}
+
+function handlePhotoUpload(e) {
+  const file = e.target.files[0];
+  if (!file || !selectedCountry) return;
+  e.target.value = '';
+
+  // Resize + convert to base64
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX = 600;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = (h / w) * MAX; w = MAX; }
+      if (h > MAX) { w = (w / h) * MAX; h = MAX; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const b64 = canvas.toDataURL('image/jpeg', 0.72);
+      const existing = worldData[selectedCountry.code] || {};
+      const photos = [...(existing.photos || []), b64];
+      window.__fbSetCountry(selectedCountry.code, { ...existing, photos })
+        .then(() => { renderPhotos(photos); toast('photo pinned'); })
+        .catch(() => toast('upload failed'));
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function deletePhoto(idx, e) {
+  e.stopPropagation();
+  if (!selectedCountry || !window.__fbReady) return;
+  const existing = worldData[selectedCountry.code] || {};
+  const photos = [...(existing.photos || [])];
+  photos.splice(idx, 1);
+  window.__fbSetCountry(selectedCountry.code, { ...existing, photos })
+    .then(() => { renderPhotos(photos); toast('photo removed'); })
+    .catch(() => {});
+}
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('on');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('on');
+}
+
+/* ══════════════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════════════ */
+function toast(msg) {
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLightbox(); closeSidebar(); }
+  if (!selectedCountry || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === '1') setStatus('captured');
+  if (e.key === '2') setStatus('target');
+  if (e.key === '3') setStatus('destroyed');
+  if (e.key === '4') setStatus('crusade');
+  if (e.key === 'x' || e.key === 'X') clearStatus();
+});
+
+/* Handle window resize */
+window.addEventListener('resize', () => {
+  const sb = document.getElementById('sidebar');
+  if (window.innerWidth > 768) {
+    sb.classList.remove('open');
+    document.body.classList.remove('sb-open');
+    document.getElementById('sb-toggle-btn').style.display = 'none';
+  } else {
+    document.getElementById('sb-toggle-btn').style.display = 'flex';
+  }
+});
+
+/* Remove default leaflet tooltip bg */
+const style = document.createElement('style');
+style.textContent = `.no-bg-tooltip .leaflet-tooltip { background:none !important; border:none !important; box-shadow:none !important; padding:0 !important; }`;
+document.head.appendChild(style);
+</script>
+</body>
+</html>
